@@ -1,14 +1,17 @@
 import json
-from src.lib.db import DB
 from psycopg2.extras import RealDictCursor, execute_values
 from datetime import datetime
+from src.lib.db import DB
+from src.lib.exceptions.InconsistentTablesException import InconsistentTablesException
+from src.lib.exceptions.InconsistentNumberOfRowsException import InconsistentNumberOfRowsException
 
 
 class Syncer:
-    def __init__(self, source_db: DB, target_db: DB, batch_size: int = 10):
+    def __init__(self, source_db: DB, target_db: DB, batch_size: int = 10, last_sync_date_table="last_sync_date"):
         self.source_db = source_db
         self.target_db = target_db
         self.batch_size = batch_size
+        self.last_sync_date_table = last_sync_date_table
 
     def check_last_sync_date(
         self,
@@ -20,7 +23,7 @@ class Syncer:
         :param target_cur:
         :return:
         """
-        sql = f"SELECT synced_at FROM {self.target_db.schema}.last_sync_date ORDER BY 1 DESC"
+        sql = f"SELECT synced_at FROM {self.target_db.schema}.{self.last_sync_date_table} ORDER BY 1 DESC"
         target_cur.execute(sql)
         result = target_cur.fetchone()
         if result:
@@ -30,16 +33,19 @@ class Syncer:
     def update_last_sync_date(
         self,
         target_cur: RealDictCursor,
-        rows_inserted: int
+        rows_inserted: int,
+        sync_date: datetime = datetime.now(),
     ) -> None:
         """
             Inserts a row denoting the last synchronization date, along with the number of rows inserted in the sync
+        :param sync_date:
         :param target_cur:
         :param rows_inserted:
         :return:
         """
-        sql = f"INSERT INTO {self.target_db.schema}.last_sync_date (synced_at, rows_inserted) VALUES (NOW(), %(rows_inserted)s)"
-        target_cur.execute(sql, {"rows_inserted": rows_inserted})
+        sql = f"INSERT INTO {self.target_db.schema}.{self.last_sync_date_table} (synced_at, rows_inserted) " \
+              f"VALUES (%(sync_date)s, %(rows_inserted)s)"
+        target_cur.execute(sql, {"sync_date": sync_date, "rows_inserted": rows_inserted})
 
     def check_table_fields(
         self,
@@ -65,9 +71,10 @@ class Syncer:
         target_cur.execute(sql, {"table_name": table_name, "table_schema": self.target_db.schema})
         target_result = json.dumps(target_cur.fetchall(), sort_keys=True)
 
-        assert source_result == target_result, f"Source and target tables have colum discrepancies:" \
+        if source_result != target_result:
+            raise InconsistentTablesException(f"Source and target tables have colum discrepancies:" \
                                                f"\n source: {source_result}," \
-                                               f"\n target: {target_result}"
+                                               f"\n target: {target_result}")
         return [x["column_name"] for x in json.loads(source_result)]
 
     def check_table_counts(
@@ -80,6 +87,7 @@ class Syncer:
             Checks the row count of the source and the target table.
             It throws an exception if the count is inconsistent.
             Most probable cause is that the last sync date was not reset after the target table has been truncated.
+            NOTE: Does not check contents!!!
         :param table_name:
         :param source_cur:
         :param target_cur:
@@ -93,8 +101,9 @@ class Syncer:
         target_cur.execute(count_target_sql)
         count_target = target_cur.fetchone()["count"]
 
-        assert count_source == count_target, f"Source and target tables have inconsistent number of rows " \
-                                             f"source = {count_source} vs target = {count_target}."
+        if count_source != count_target:
+            raise InconsistentNumberOfRowsException(f"Source and target tables have inconsistent number of rows " \
+                                             f"source = {count_source} vs target = {count_target}.")
         return count_target
 
     def sync_table(
@@ -117,7 +126,7 @@ class Syncer:
         fields = self.check_table_fields(table_name, source_cur, target_cur)
         select_sql = f"SELECT {', '.join(fields)} " \
                      f"FROM {self.source_db.schema}.{table_name} " \
-                     f"WHERE created_at > '{last_sync_date}'"
+                     f"WHERE created_at > '{last_sync_date}'"  # potential pitfall, using timestamp vs date
         insert_sql = f"INSERT INTO {self.target_db.schema}.{table_name} " \
                      f" ({', '.join(fields)}) " \
                      f" VALUES %s;"

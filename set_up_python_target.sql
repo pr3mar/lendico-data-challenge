@@ -1,6 +1,3 @@
-
-
-
 CREATE TABLE IF NOT EXISTS address
 (
     id integer,
@@ -28,5 +25,6 @@ CREATE TABLE IF NOT EXISTS company
 
 CREATE TABLE IF NOT EXISTS last_sync_date
 (
-    synced_at TIMESTAMP DEFAULT 0
+    synced_at TIMESTAMP,
+    rows_inserted int
 );
