@@ -1,9 +1,13 @@
 import unittest
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from datetime import datetime
-from src.lib.db import DB
-from src.lib.syncer import Syncer
-from src.lib.exceptions.InconsistentTablesException import InconsistentTablesException
-from src.lib.exceptions.InconsistentNumberOfRowsException import InconsistentNumberOfRowsException
+from data_challenge.db import DB
+from data_challenge.syncer import Syncer
+from data_challenge.exceptions import InconsistentTablesException, InconsistentNumberOfRowsException
 
 
 class TestApp(unittest.TestCase):

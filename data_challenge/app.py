@@ -1,5 +1,5 @@
-from src.lib.syncer import Syncer
-from src.lib.db import DB
+from data_challenge.syncer import Syncer
+from data_challenge.db import DB
 
 
 if __name__ == '__main__':

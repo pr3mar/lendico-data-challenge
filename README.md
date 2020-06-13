@@ -1,8 +1,39 @@
 # Lendico Data Engineer Take Home challenge
 
-Before you start you'll need a local instance of postgres.
- 
+## Prerequisites
+Having 2 local databases: `source` and `target`, which can be accessed with the credentials set in [app.py](data_challenge/app.py).
+In this case we are using the `localhost:5432` with username:password `postgres:admin` and the public schema.
 
+Please adjust the parameters as suited. This package does not take care of any configurable parameters for the databases.
+
+Run `set_up_python_source.sql` in the source database.
+ 
+Run `set_up_python_target.sql` in the target database. It includes an additional table - `last_sync_date` which holds the information about the latest sync run.
+
+### Python Setup
+```shell script
+pip install pipenv # if you are not using pipenv yet
+cd <repo_root>
+pipenv install
+pipenv shell
+python setup.py install # installs the code as a package 
+```
+
+```shell script
+# run the app
+python data_challenge/app.py
+
+# run the tests
+python tests/app_test.py -v # -v is verbose, to show status of each test run  
+```
+
+
+### SQL task
+The resulting queries are provided in the [sql_part_queries.sql](./sql_part_queries.sql)
+
+## Provided Instructions
+
+Before you start you'll need a local instance of postgres.
  
 ### The Python part:
 

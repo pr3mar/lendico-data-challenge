@@ -1,9 +1,8 @@
 import json
 from psycopg2.extras import RealDictCursor, execute_values
 from datetime import datetime
-from src.lib.db import DB
-from src.lib.exceptions.InconsistentTablesException import InconsistentTablesException
-from src.lib.exceptions.InconsistentNumberOfRowsException import InconsistentNumberOfRowsException
+from data_challenge.db import DB
+from data_challenge.exceptions import InconsistentTablesException, InconsistentNumberOfRowsException
 
 
 class Syncer:
