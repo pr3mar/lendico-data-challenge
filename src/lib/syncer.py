@@ -1,13 +1,14 @@
 import json
 from src.lib.db import DB
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, execute_values
 from datetime import datetime
 
 
 class Syncer:
-    def __init__(self, source_db: DB, target_db: DB):
+    def __init__(self, source_db: DB, target_db: DB, batch_size: int = 10):
         self.source_db = source_db
         self.target_db = target_db
+        self.batch_size = batch_size
 
     def check_last_sync_date(
         self,
@@ -49,6 +50,24 @@ class Syncer:
                                                f"\n target: {target_result}"
         return [x["column_name"] for x in json.loads(source_result)]
 
+    def check_table_counts(
+        self,
+        table_name: str,
+        source_cur: RealDictCursor,
+        target_cur: RealDictCursor
+    ) -> int:
+        count_source_sql = f"SELECT COUNT(*) FROM {self.source_db.schema}.{table_name}"
+        source_cur.execute(count_source_sql)
+        count_source = source_cur.fetchone()["count"]
+
+        count_target_sql = f"SELECT COUNT(*) FROM {self.target_db.schema}.{table_name}"
+        target_cur.execute(count_target_sql)
+        count_target = target_cur.fetchone()["count"]
+
+        assert count_source == count_target, f"Source and target tables have inconsistent number of rows " \
+                                             f"source = {count_source} vs target = {count_target}."
+        return count_target
+
     def sync_table(
         self,
         table_name: str,
@@ -62,12 +81,32 @@ class Syncer:
         :return: number of rows inserted
         """
         # TODO:
-        #   - check the last sync date
-        #   - select the data > last sync date
-        #   - insert it into the target db
+        #   - [x] check if the fields in source and target are matching
+        #   - [x] select the data > last sync date from source db
+        #   - [x] insert it into the target db
+        #   - [x] assert counts in both source and target are the same
+
         fields = self.check_table_fields(table_name, source_cur, target_cur)
-        print(fields)
-        return 123
+        select_sql = f"SELECT {', '.join(fields)} " \
+                     f"FROM {self.source_db.schema}.{table_name} " \
+                     f"WHERE created_at > '{last_sync_date}'"
+        insert_sql = f"INSERT INTO {self.target_db.schema}.{table_name} " \
+                     f" ({', '.join(fields)}) " \
+                     f" VALUES %s;"
+        print(select_sql)
+        source_cur.execute(select_sql)
+        rows_inserted = 0
+        while True:
+            batch = source_cur.fetchmany(self.batch_size)
+            if not batch:
+                break
+            rows_inserted += len(batch)
+            vals = [tuple(row[f] for f in fields) for row in batch]
+            execute_values(target_cur, insert_sql, vals)
+
+        self.check_table_counts(table_name, source_cur, target_cur)
+
+        return rows_inserted
 
     def sync(self, tables: list):
         """
@@ -77,17 +116,16 @@ class Syncer:
         :return:
         """
         # TODO:
-        #   - open a transaction in both source and target dbs
-        #   - sync the tables
-        #       - check if the fields in source and target are matching
-        #   - assert everything is ok
-        #       - counts in both source and target are the same
-        #   - update the last sync date
-        with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur,\
-            self.target_db.connect() as target_conn, target_conn.cursor() as target_cur:
+        #   - [x] open a transaction in both source and target dbs
+        #   - [x] check the last sync date
+        #   - [x] sync the tables
+        #   - [x] assert everything is ok
+        #   - [x] update the last sync date
+        with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur, \
+                self.target_db.connect() as target_conn, target_conn.cursor() as target_cur:
             last_sync_date = self.check_last_sync_date(target_cur)
             print(f"last sync date = {last_sync_date}")
             rows_inserted = 0
             for table in tables:
-                rows_inserted += self.sync_table(table, source_cur, target_cur)
+                rows_inserted += self.sync_table(table, source_cur, target_cur, last_sync_date)
             self.update_last_sync_date(target_cur, rows_inserted)
