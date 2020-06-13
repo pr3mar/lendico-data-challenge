@@ -13,12 +13,14 @@ class TestApp(unittest.TestCase):
         self.source_db = DB(db_name="source", username="postgres", password="admin")
         self.last_sync_date_table = "last_sync_date_test"
         self.sync_table = "sync_table_test"
-        self.syncer = Syncer(source_db=self.source_db, target_db=self.target_db, last_sync_date_table="last_sync_date_test")
+        self.syncer = Syncer(source_db=self.source_db, target_db=self.target_db,
+                             last_sync_date_table="last_sync_date_test")
         with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur, \
                 self.target_db.connect() as target_conn, target_conn.cursor() as target_cur:
             source_cur.execute(f"CREATE TABLE IF NOT EXISTS {self.sync_table}(id int, created_at date);")
             target_cur.execute(f"CREATE TABLE IF NOT EXISTS {self.sync_table}(id int, created_at date);")
-            target_cur.execute(f"CREATE TABLE IF NOT EXISTS {self.last_sync_date_table}(synced_at TIMESTAMP, rows_inserted int);")
+            target_cur.execute(
+                f"CREATE TABLE IF NOT EXISTS {self.last_sync_date_table}(synced_at TIMESTAMP, rows_inserted int);")
 
     def tearDown(self) -> None:
         with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur, \
@@ -72,8 +74,10 @@ class TestApp(unittest.TestCase):
         with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur, \
                 self.target_db.connect() as target_conn, target_conn.cursor() as target_cur:
             try:
-                source_cur.execute(f"INSERT INTO {self.sync_table} (id, created_at) VALUES (1, '2020-06-10 00:01'), (2, '2020-06-10 00:01'), (3, '2020-06-10 00:01')")
-                target_cur.execute(f"INSERT INTO {self.sync_table} (id, created_at) VALUES (1, '2020-06-10 00:01'), (2, '2020-06-10 00:01'), (3, '2020-06-10 00:01')")
+                source_cur.execute(
+                    f"INSERT INTO {self.sync_table} (id, created_at) VALUES (1, '2020-06-10'), (2, '2020-06-10'), (3, '2020-06-10')")
+                target_cur.execute(
+                    f"INSERT INTO {self.sync_table} (id, created_at) VALUES (1, '2020-06-10'), (2, '2020-06-10'), (3, '2020-06-10')")
                 num_rows = self.syncer.check_table_counts(self.sync_table, source_cur, target_cur)
                 self.assertEqual(num_rows, 3)
             except InconsistentNumberOfRowsException:
@@ -83,15 +87,70 @@ class TestApp(unittest.TestCase):
         with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur, \
                 self.target_db.connect() as target_conn, target_conn.cursor() as target_cur, \
                 self.assertRaises(InconsistentNumberOfRowsException) as ctx:
-            target_cur.execute(f"INSERT INTO {self.sync_table} (id, created_at) VALUES (1, '2020-06-10 00:01')")
+            target_cur.execute(f"INSERT INTO {self.sync_table} (id, created_at) VALUES (1, '2020-06-10')")
             self.syncer.check_table_counts(self.sync_table, source_cur, target_cur)
             self.assertTrue("source: 0" in ctx.exception and "target: 1" in ctx.exception)
 
-    def test_sync_table(self):
-        self.assertEqual(True, True)
+    def test_sync_table_complete(self):
+        with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur, \
+                self.target_db.connect() as target_conn, target_conn.cursor() as target_cur:
+            try:
+                last_sync_date = datetime(2020, 6, 8, 0, 0)
+                source_cur.execute(f"INSERT INTO {self.sync_table} (id, created_at) VALUES "
+                                   f"(1, '2020-06-09'), "
+                                   f"(2, '2020-06-10'), "
+                                   f"(3, '2020-06-10'),"
+                                   f"(4, '2020-06-10')")
+                synced_rows = self.syncer.sync_table(self.sync_table, source_cur, target_cur, last_sync_date)
+                self.assertEqual(4, synced_rows)
+            except Exception:
+                self.fail("It should sync the tables.")
+
+    def test_sync_table_incomplete_sync(self):
+        # the number of rows after each sync should be the same. If there are inconsistencies => fail
+        with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur, \
+                self.target_db.connect() as target_conn, target_conn.cursor() as target_cur, \
+                self.assertRaises(InconsistentNumberOfRowsException) as ctx:
+            last_sync_date = datetime(2020, 6, 9, 0, 0)
+            source_cur.execute(f"INSERT INTO {self.sync_table} (id, created_at) VALUES "
+                               f"(1, '2020-06-09'), "  # created_at is not greater than last_sync_date -> fails 
+                               f"(2, '2020-06-10'), "
+                               f"(3, '2020-06-10'),"
+                               f"(4, '2020-06-10')")
+            self.syncer.sync_table(self.sync_table, source_cur, target_cur, last_sync_date)
+
+    def __prepare_data(self):
+        with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur, \
+                self.target_db.connect() as target_conn, target_conn.cursor() as target_cur:
+            source_cur.execute(f"INSERT INTO public.{self.sync_table} (id, created_at) VALUES "
+                               f"(1, '2020-06-09'), "
+                               f"(2, '2020-06-10'), "
+                               f"(3, '2020-06-10'), "
+                               f"(4, '2020-06-10')")
 
     def test_sync(self):
-        self.assertEqual(True, True)
+        self.__prepare_data()
+        try:
+            num_synced = self.syncer.sync([self.sync_table])
+            self.assertEqual(num_synced, 4)
+            with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur, \
+                    self.target_db.connect() as target_conn, target_conn.cursor() as target_cur:
+
+                target_cur.execute(f"SELECT * FROM public.{self.sync_table}")
+                synced_data = target_cur.fetchall()
+
+                source_cur.execute(f"SELECT * FROM public.{self.sync_table}")
+                source_data = source_cur.fetchall()
+
+                target_cur.execute(f"SELECT * FROM public.{self.last_sync_date_table}")
+                last_sync_target = target_cur.fetchall()
+
+                self.assertDictEqual(dict(source_data), dict(synced_data))
+                self.assertEqual(len(last_sync_target), 1)
+                self.assertTrue((datetime.now() - last_sync_target[0]["synced_at"]).seconds < 1)
+                self.assertEqual(last_sync_target[0]["rows_inserted"], 4)
+        except Exception as e:
+            self.fail("It should sync the tables.")
 
 
 if __name__ == '__main__':

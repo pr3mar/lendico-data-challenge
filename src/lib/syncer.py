@@ -145,7 +145,7 @@ class Syncer:
 
         return rows_inserted
 
-    def sync(self, tables: list):
+    def sync(self, tables: list) -> int:
         """
             syncs a list of tables from the source to the target DB
                 - opens a transaction in both source and target dbs
@@ -166,3 +166,4 @@ class Syncer:
                 rows_inserted += self.sync_table(table, source_cur, target_cur, last_sync_date)
             self.update_last_sync_date(target_cur, rows_inserted)
             print(f"Table sync is done, synced {rows_inserted} rows in total.")
+            return rows_inserted
