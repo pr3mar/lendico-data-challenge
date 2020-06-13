@@ -14,6 +14,12 @@ class Syncer:
         self,
         target_cur: RealDictCursor
     ) -> datetime:
+        """
+            Returns the last synchronization date.
+            If the table is empty, returns the beginning of the Unix epoch (1970-01-01 00:00).
+        :param target_cur:
+        :return:
+        """
         sql = f"SELECT synced_at FROM {self.target_db.schema}.last_sync_date ORDER BY 1 DESC"
         target_cur.execute(sql)
         result = target_cur.fetchone()
@@ -26,6 +32,12 @@ class Syncer:
         target_cur: RealDictCursor,
         rows_inserted: int
     ) -> None:
+        """
+            Inserts a row denoting the last synchronization date, along with the number of rows inserted in the sync
+        :param target_cur:
+        :param rows_inserted:
+        :return:
+        """
         sql = f"INSERT INTO {self.target_db.schema}.last_sync_date (synced_at, rows_inserted) VALUES (NOW(), %(rows_inserted)s)"
         target_cur.execute(sql, {"rows_inserted": rows_inserted})
 
@@ -35,6 +47,14 @@ class Syncer:
         source_cur: RealDictCursor,
         target_cur: RealDictCursor
     ) -> list:
+        """
+            Checks whether the source and the target tables have consistent fields.
+            Fails if there is an inconsistency, otherwise returns the names of the columns.
+        :param table_name:
+        :param source_cur:
+        :param target_cur:
+        :return: column names which need to be synced
+        """
         sql = f"SELECT column_name, data_type, character_maximum_length " \
               f"FROM information_schema.columns " \
               f"WHERE table_name IN (%(table_name)s) AND table_schema IN (%(table_schema)s);"
@@ -56,6 +76,15 @@ class Syncer:
         source_cur: RealDictCursor,
         target_cur: RealDictCursor
     ) -> int:
+        """
+            Checks the row count of the source and the target table.
+            It throws an exception if the count is inconsistent.
+            Most probable cause is that the last sync date was not reset after the target table has been truncated.
+        :param table_name:
+        :param source_cur:
+        :param target_cur:
+        :return: the number of rows in both of the tables
+        """
         count_source_sql = f"SELECT COUNT(*) FROM {self.source_db.schema}.{table_name}"
         source_cur.execute(count_source_sql)
         count_source = source_cur.fetchone()["count"]
@@ -76,15 +105,14 @@ class Syncer:
         last_sync_date: datetime
     ) -> int:
         """
-            syncs the data for a given table_name from the source DB to the target DB
+            Syncs the data for a given table_name from the source DB to the target DB
+            - checks if the fields in source and target are matching
+            - selects the data > last sync date from source db
+            - inserts it into the target db
+            - asserts counts in both source and target are the same
 
         :return: number of rows inserted
         """
-        # TODO:
-        #   - [x] check if the fields in source and target are matching
-        #   - [x] select the data > last sync date from source db
-        #   - [x] insert it into the target db
-        #   - [x] assert counts in both source and target are the same
 
         fields = self.check_table_fields(table_name, source_cur, target_cur)
         select_sql = f"SELECT {', '.join(fields)} " \
@@ -93,8 +121,8 @@ class Syncer:
         insert_sql = f"INSERT INTO {self.target_db.schema}.{table_name} " \
                      f" ({', '.join(fields)}) " \
                      f" VALUES %s;"
-        print(select_sql)
         source_cur.execute(select_sql)
+
         rows_inserted = 0
         while True:
             batch = source_cur.fetchmany(self.batch_size)
@@ -111,21 +139,21 @@ class Syncer:
     def sync(self, tables: list):
         """
             syncs a list of tables from the source to the target DB
-
+                - opens a transaction in both source and target dbs
+                - checks the last sync date
+                - syncs the tables
+                - asserts everything is ok
+                - updates the last sync date
         :param tables: the tables which need to be synced from the source to the target DB
         :return:
         """
-        # TODO:
-        #   - [x] open a transaction in both source and target dbs
-        #   - [x] check the last sync date
-        #   - [x] sync the tables
-        #   - [x] assert everything is ok
-        #   - [x] update the last sync date
+        print(f"Initiating the sync process...")
         with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur, \
                 self.target_db.connect() as target_conn, target_conn.cursor() as target_cur:
             last_sync_date = self.check_last_sync_date(target_cur)
-            print(f"last sync date = {last_sync_date}")
+            print(f"The last sync date is {last_sync_date}")
             rows_inserted = 0
             for table in tables:
                 rows_inserted += self.sync_table(table, source_cur, target_cur, last_sync_date)
             self.update_last_sync_date(target_cur, rows_inserted)
+            print(f"Table sync is done, synced {rows_inserted} rows in total.")
