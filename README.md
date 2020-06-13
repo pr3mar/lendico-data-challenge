@@ -8,7 +8,7 @@ Before you start you'll need a local instance of postgres.
 
 #### Set up:
 - create two databases, one called 'source' and one called 'target'
-- run the queries in `set_up_python.sql` while connected to the 'source' database
+- run the queries in `set_up_python_source.sql` while connected to the 'source' database
 
 #### Task
 - Create an ETL process in Python that will extract the `address` and `company` tables from the source database and load them into the 'target' database
