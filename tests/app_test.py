@@ -33,13 +33,13 @@ class TestApp(unittest.TestCase):
             target_cur.execute(f"DROP TABLE IF EXISTS {self.sync_table};")
             target_cur.execute(f"DROP TABLE IF EXISTS {self.last_sync_date_table};")
 
-    def test_check_last_sync_date_no_data(self):
+    def test_check_last_sync_date_no_data(self) -> None:
         # test an empty table
         with self.target_db.connect() as target_conn, target_conn.cursor() as target_cur:
             sync_date = self.syncer.check_last_sync_date(target_cur)
             self.assertEqual(sync_date, datetime(1970, 1, 1, 0, 0))
 
-    def test_check_last_sync_date_existing_data(self):
+    def test_check_last_sync_date_existing_data(self) -> None:
         # test with existing data
         with self.target_db.connect() as target_conn, target_conn.cursor() as target_cur:
             target_cur.execute(f"INSERT INTO {self.last_sync_date_table} (synced_at, rows_inserted) VALUES "
@@ -49,7 +49,7 @@ class TestApp(unittest.TestCase):
             sync_date = self.syncer.check_last_sync_date(target_cur)
             self.assertEqual(sync_date, datetime(2020, 6, 10, 0, 0))
 
-    def test_update_last_sync_date(self):
+    def test_update_last_sync_date(self) -> None:
         with self.target_db.connect() as target_conn, target_conn.cursor() as target_cur:
             sync_date = datetime.now()
             self.syncer.update_last_sync_date(target_cur, rows_inserted=100, sync_date=sync_date)
@@ -57,7 +57,7 @@ class TestApp(unittest.TestCase):
             db_sync_date = target_cur.fetchone()["synced_at"]
             self.assertEqual(sync_date, db_sync_date)
 
-    def test_check_table_fields_consistent_tables(self):
+    def test_check_table_fields_consistent_tables(self) -> None:
         with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur, \
                 self.target_db.connect() as target_conn, target_conn.cursor() as target_cur:
             try:
@@ -66,7 +66,7 @@ class TestApp(unittest.TestCase):
             except InconsistentTablesException:
                 self.fail("Should not have failed here, tables are consistent.")
 
-    def test_check_table_fields_inconsistent_tables(self):
+    def test_check_table_fields_inconsistent_tables(self) -> None:
         with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur, \
                 self.target_db.connect() as target_conn, target_conn.cursor() as target_cur, \
                 self.assertRaises(InconsistentTablesException) as ctx:
@@ -74,7 +74,7 @@ class TestApp(unittest.TestCase):
             self.syncer.check_table_fields(self.sync_table, source_cur, target_cur)
             self.assertTrue("dummy_col" in ctx.exception)
 
-    def test_check_table_counts_consistent(self):
+    def test_check_table_counts_consistent(self) -> None:
         with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur, \
                 self.target_db.connect() as target_conn, target_conn.cursor() as target_cur:
             try:
@@ -87,7 +87,7 @@ class TestApp(unittest.TestCase):
             except InconsistentNumberOfRowsException:
                 self.fail("Tables should have consistent number of rows.")
 
-    def test_check_table_counts_inconsistent(self):
+    def test_check_table_counts_inconsistent(self) -> None:
         with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur, \
                 self.target_db.connect() as target_conn, target_conn.cursor() as target_cur, \
                 self.assertRaises(InconsistentNumberOfRowsException) as ctx:
@@ -95,7 +95,7 @@ class TestApp(unittest.TestCase):
             self.syncer.check_table_counts(self.sync_table, source_cur, target_cur)
             self.assertTrue("source: 0" in ctx.exception and "target: 1" in ctx.exception)
 
-    def test_sync_table_complete(self):
+    def test_sync_table_complete(self) -> None:
         with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur, \
                 self.target_db.connect() as target_conn, target_conn.cursor() as target_cur:
             try:
@@ -110,7 +110,7 @@ class TestApp(unittest.TestCase):
             except Exception:
                 self.fail("It should sync the tables.")
 
-    def test_sync_table_incomplete_sync(self):
+    def test_sync_table_incomplete_sync(self) -> None:
         # the number of rows after each sync should be the same. If there are inconsistencies => fail
         with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur, \
                 self.target_db.connect() as target_conn, target_conn.cursor() as target_cur, \
@@ -123,7 +123,7 @@ class TestApp(unittest.TestCase):
                                f"(4, '2020-06-10')")
             self.syncer.sync_table(self.sync_table, source_cur, target_cur, last_sync_date)
 
-    def __prepare_data(self):
+    def __prepare_data(self) -> None:
         with self.source_db.connect() as source_conn, source_conn.cursor() as source_cur, \
                 self.target_db.connect() as target_conn, target_conn.cursor() as target_cur:
             source_cur.execute(f"INSERT INTO public.{self.sync_table} (id, created_at) VALUES "
@@ -132,7 +132,7 @@ class TestApp(unittest.TestCase):
                                f"(3, '2020-06-10'), "
                                f"(4, '2020-06-10')")
 
-    def test_sync(self):
+    def test_sync(self) -> None:
         self.__prepare_data()
         try:
             num_synced = self.syncer.sync([self.sync_table])

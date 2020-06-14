@@ -27,6 +27,19 @@ python data_challenge/app.py
 python tests/app_test.py -v # -v is verbose, to show status of each test run  
 ```
 
+### Future work and improvements on the python side
+
+- It should be considered converting the `created_at` from `date` into `timestamp`
+- A better improvement on the same note would be adding a new field `lastModificationTimestamp` which can be used more safely when syncing the data,
+with the current setup you are unsure what needs to be synced
+- Using `>=` when comparing the `created_at` can cause uncertainty when loading data which was from the current day
+but added after the sync, which will in turn cause the need of a full sync which is a costly operation
+- Another pitfall is that the current code only checks that the number of rows is the same in the `source` and the `target`
+databases, whereas it can happen that some are altered/deleted and these situations will require a new full sync instead of an incremental one 
+- The current setup is very rigid: you need to alter the code to apply the db configs, this can be improved with a `.env` file
+- Ability to leave out some fields can come in very handy
+- Ability to convert between field types is also very handy
+
 
 ### SQL task
 The resulting queries are provided in the [sql_part_queries.sql](./sql_part_queries.sql)
